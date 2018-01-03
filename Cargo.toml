@@ -1,0 +1,8 @@
+[package]
+name = "ninetynine"
+version = "0.1.0"
+authors = ["Eric Kelly <kelly.eric@gmail.com>"]
+
+[dependencies]
+cards = { path = "../cards" }
+
