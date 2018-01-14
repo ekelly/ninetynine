@@ -1,4 +1,5 @@
 use cards::card::{Card, Suit};
+use cards::deck::Deck;
 
 /// When settings are implemented, they'll go here. For now, though, this is simply an empty struct
 struct GameOptions {
@@ -7,9 +8,16 @@ struct GameOptions {
 
 /// A game consists of a list of scores for each 'Game', the current round, and the set of players
 struct Game {
-    scores: Vec<[u16; 3]>,
+
+    /// A list of 'game' scores
+    /// A player's total score is the sum of their scores for each individual game.
+    scores: Vec<Vec<u16>>,
+
+    /// The current round
     round: Round,
-    players: [Player; 3],
+
+    /// How many players there are
+    player_count: u8
 }
 
 /*
@@ -22,37 +30,96 @@ struct Game {
  * - Players
  */
 struct Round {
+
+    /// The current id of the dealer
     dealer: u8,
+
+    /// The trump suit
     trump: Option<Suit>,
+
+    /// Players have hands
+    /// Bids are also tracked per player
+    players: Vec<Player>,
+
+    /// The ID of the player who's turn it is. This is only applicable in the play stage of the game
     current_player: u8,
-    current_trick: [Option<Card>; 3],
-    current_trick_count: [u8; 3],
-    current_bid: [Option<[Card; 3]>; 3],
+
+    /// The current trick is the tail of the tricks vector
+    tricks: Vec<Trick>,
+}
+
+struct Player {
+    hand: Vec<Card>,
+    bid: Option<Bid>,
+    tricks_won: u8
+}
+
+struct Bid {
+    bid: [Card; 3],
+    bid_value: u8
+}
+
+struct Trick {
+
 }
 
 impl Round {
 
-    pub fn new(dealer: u8) -> Self {
+    /// Creates a new Round
+    fn new(dealer: u8, player_count: u8) -> Self {
+        if player_count != 3 && player_count != 4 {
+            panic!("Can't handle player counts other than 3 or 4");
+        }
+
+        let mut deck = if player_count == 3 {
+            Deck::new_shuffled_subset(Rank::Six, Rank::Ace);
+        } else if player_count == 4 {
+            Deck::new_shuffled();
+        };
+        let card_count_per_player = deck.size() / player_count;
+        let mut players: Vec<Player> = Vec::with_capacity(player_count);
+        for i in 0..player_count {
+            players.append(Player {
+                hand: deck.deal_n(card_count_per_player).unwrap(),
+                bid: None,
+                tricks_won: 0
+            })
+        }
         Round {
             dealer,
             trump: None,
+            players,
             current_player: increment_player(dealer),
-            current_trick: [None; 3],
-            current_trick_count: [0; 3],
-            current_bid: [[None; 3]; 3],
+            tricks: vec![]
         }
     }
 
-    pub fn submit_bid(&self, game: &Game, player_num: u8, cards: [Card; 3]) -> Self {
-        let mut bids: [[Card; 3]; 3] = self.current_bid;
+    pub fn submit_bid(&self, game: &Game, player_num: u8, cards: &[Card; 3]) -> Self {
+        // TODO: This function really doesn't need mutation. Get rid of it.
+        if player_num < 0 || player_num > game.player_count {
+            panic!("Incorrect number of players!");
+        }
+
+        let mut new_bid: Vec<Card> = Vec::with_capacity(3);
+        new_bid.clone_from_slice(cards);
+        let player = game.round.players[player_num];
+        let mut player_bid = player.bid;
+        let mut player_hand = player.hand;
+
+        if let Some(previous_bid) = player_bid {
+            player_hand.append(previous_bid);
+        };
+        player_hand.retain(|&card| !new_bid.contains(card));
+        player_bid.bid = new_bid.as_slice();
+        player_bid.bid_value = 0; // TODO: Create function to calculate value
+
         bids[player_num] = cards;
         Round {
             dealer: self.dealer,
             trump: self.trump,
             current_player: self.current_player,
-            current_trick: self.current_trick,
-            current_trick_count: self.current_trick_count,
-            current_bid: bids,
+            players,
+            tricks: vec![],
         }
     }
 
@@ -76,9 +143,8 @@ impl Round {
         }
     }
 
-
-
     pub fn play_card(&self, card: Card) -> Self {
+        // TODO: This entire function needs to be rewritten.
         let trick_winner: Option<u8> = self.determine_trick_winner(self.current_player, card);
         let current_player = match trick_winner {
             Some(next_player) => next_player,
@@ -106,13 +172,21 @@ impl Round {
             dealer: self.dealer,
             trump: self.trump,
             current_player,
-            current_trick,
-            current_trick_count,
-            current_bid: bids,
+            players,
+            tricks
         }
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_round_new() {
+    }
+}
+
 fn increment_player(player: u8) -> u8 {
-    player + 1 % 3
+    player + 1 % 3       // This is hardcoding the player count. We probably don't want to do that.
 }
